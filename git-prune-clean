@@ -1,0 +1,130 @@
+#!/bin/bash
+
+# Verifica se está em um repositório Git
+if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  echo "❌ Você não está dentro de um repositório Git."
+  exit 1
+fi
+
+# Verifica se a branch develop existe
+if ! git show-ref --verify --quiet refs/heads/develop; then
+  echo "❌ A branch 'develop' não foi encontrada localmente."
+  echo "💡 Execute: git checkout develop && git pull origin develop"
+  exit 1
+fi
+
+echo "🔄 Atualizando referências remotas..."
+git fetch --prune
+
+echo "🔍 Analisando branches locais..."
+
+# Pega a branch atual para evitar deletá-la
+current_branch=$(git branch --show-current)
+
+# Lista todas as branches locais (exceto develop e a atual)
+local_branches=$(git branch | grep -v "^\*" | grep -v "develop" | sed 's/^ *//')
+
+# Arrays para armazenar diferentes tipos de branches
+merged_branches=()
+orphan_branches=()
+unmerged_branches=()
+
+# Analisa cada branch local
+for branch in $local_branches; do
+  # Pula a branch atual
+  if [ "$branch" = "$current_branch" ]; then
+    continue
+  fi
+  
+  # Verifica se a branch foi mergeada com develop
+  if git merge-base --is-ancestor "$branch" develop 2>/dev/null; then
+    # Verifica se ainda existe no remoto
+    if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+      # Existe no remoto mas já foi mergeada
+      merged_branches+=("$branch")
+    else
+      # Não existe no remoto e já foi mergeada (órfã)
+      orphan_branches+=("$branch")
+    fi
+  else
+    # Não foi mergeada com develop
+    if ! git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+      # Não existe no remoto e não foi mergeada
+      unmerged_branches+=("$branch")
+    fi
+  fi
+done
+
+# Mostra resultados
+echo ""
+echo "📊 Análise das branches locais:"
+echo "==============================================="
+
+if [ ${#merged_branches[@]} -gt 0 ]; then
+  echo "✅ Branches mergeadas com develop (seguras para deletar):"
+  printf "   %s\n" "${merged_branches[@]}"
+  echo ""
+fi
+
+if [ ${#orphan_branches[@]} -gt 0 ]; then
+  echo "🔶 Branches órfãs mergeadas com develop (seguras para deletar):"
+  printf "   %s\n" "${orphan_branches[@]}"
+  echo ""
+fi
+
+if [ ${#unmerged_branches[@]} -gt 0 ]; then
+  echo "⚠️  Branches órfãs NÃO mergeadas (requerem atenção):"
+  printf "   %s\n" "${unmerged_branches[@]}"
+  echo "   ☝️  Essas branches não foram mergeadas e não existem no remoto!"
+  echo ""
+fi
+
+# Combina branches seguras para deletar
+all_safe_branches=("${merged_branches[@]}" "${orphan_branches[@]}")
+
+if [ ${#all_safe_branches[@]} -eq 0 ]; then
+  echo "✅ Nenhuma branch segura encontrada para deletar."
+  exit 0
+fi
+
+# Pergunta sobre deleção das branches seguras
+echo "❓ Deseja deletar as branches mergeadas com develop? (y/n): "
+read -r answer
+
+if [[ "$answer" =~ ^[Yy]$ ]]; then
+  echo ""
+  echo "🗑️  Deletando branches..."
+  for branch in "${all_safe_branches[@]}"; do
+    if git branch -d "$branch" 2>/dev/null; then
+      echo "✅ Deletada: $branch"
+    else
+      echo "❌ Erro ao deletar: $branch"
+    fi
+  done
+  echo ""
+  echo "✅ Processo concluído!"
+else
+  echo "❌ Nenhuma branch foi deletada."
+fi
+
+# Se houver branches não mergeadas, pergunta o que fazer
+if [ ${#unmerged_branches[@]} -gt 0 ]; then
+  echo ""
+  echo "❓ Deseja forçar a deleção das branches NÃO mergeadas? (y/n): "
+  echo "⚠️  ATENÇÃO: Isso pode causar perda de código!"
+  read -r force_answer
+  
+  if [[ "$force_answer" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "🔥 Forçando deleção de branches não mergeadas..."
+    for branch in "${unmerged_branches[@]}"; do
+      if git branch -D "$branch" 2>/dev/null; then
+        echo "🔥 Deletada (forçado): $branch"
+      else
+        echo "❌ Erro ao deletar: $branch"
+      fi
+    done
+  else
+    echo "✅ Branches não mergeadas foram preservadas."
+  fi
+fi
