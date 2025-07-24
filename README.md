@@ -254,7 +254,7 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
 Se encontrar problemas ou tiver sugestões:
 
 1. Verifique a seção [Solução de Problemas](#-solução-de-problemas)
-2. Abra uma [Issue](https://github.com/seu-usuario/seu-repo/issues)
+2. Abra uma [Issue](https://github.com/alexandremsouza1/git-prune-clean/issues)
 3. Entre em contato com a equipe de desenvolvimento
 
 ---
